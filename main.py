@@ -38,6 +38,7 @@ def check_dependencies() -> list[str]:
 
     try:
         import PIL
+        PIL._avif = None
     except ImportError:
         missing.append("Pillow")
 
@@ -96,11 +97,11 @@ def main():
     # 创建主窗口
     main_window = MainWindow()
 
-    # 创建全局工具窗口（初始隐藏）
-    coord_picker = CoordinatePicker()
+    # 创建全局工具窗口（初始隐藏，设定父对象确保关闭主窗口时自动清理）
+    coord_picker = CoordinatePicker(main_window)
     coord_picker.move(100, 100)
 
-    screenshot_tool = ScreenshotTool()
+    screenshot_tool = ScreenshotTool(main_window)
     screenshot_tool.move(450, 100)
 
     # 将工具窗口关联到主窗口

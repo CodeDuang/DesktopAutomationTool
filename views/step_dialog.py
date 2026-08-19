@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QPushButton,
     QLineEdit,
+    QPlainTextEdit,
     QComboBox,
     QSpinBox,
     QDoubleSpinBox,
@@ -19,8 +20,10 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QScrollArea,
     QWidget,
+    QLabel,
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QEvent
+from PySide6.QtWidgets import QToolTip
 
 from models.step import Step, StepType, FailureConfig, VerifyConfig, VerifyType, VerifyMode
 from views.widgets.hotkey_recorder import HotkeyRecorder
@@ -210,6 +213,18 @@ class StepDialog(QDialog):
         if self.verify_group.isChecked() or self.step.verify_config.enabled:
             self._on_verify_type_changed()
 
+    def eventFilter(self, obj, event):
+        """事件过滤器：鼠标移入帮助按钮时立即显示提示，移出时隐藏"""
+        if obj is self._help_btn:
+            if event.type() == QEvent.Enter:
+                from PySide6.QtGui import QCursor
+                QToolTip.showText(QCursor.pos(), self._help_explanation, self)
+                return True
+            elif event.type() == QEvent.Leave:
+                QToolTip.hideText()
+                return True
+        return super().eventFilter(obj, event)
+
     def _on_type_changed(self):
         """切换步骤类型时重建参数表单"""
         # 清除旧控件
@@ -341,6 +356,8 @@ class StepDialog(QDialog):
         """添加参数行并注册，固定输入控件最小高度"""
         if isinstance(widget, QLineEdit):
             widget.setMinimumHeight(32)
+        elif isinstance(widget, QPlainTextEdit):
+            pass  # 高度已在 build 时设置
         elif isinstance(widget, QComboBox):
             widget.setMinimumHeight(30)
         elif isinstance(widget, (QSpinBox, QDoubleSpinBox)):
@@ -464,14 +481,48 @@ class StepDialog(QDialog):
 
     def _build_input_text_params(self):
         w = QComboBox()
-        w.addItem("固定文本", "fixed")
+        w.addItem("固定文本（支持多行）", "fixed")
         w.addItem("循环轮数数字", "loop_index")
         w.addItem("剪贴板内容", "clipboard")
         w.currentIndexChanged.connect(self._on_input_type_changed)
-        self._add_param_row("文本来源:", w, "text_type")
 
-        self._input_value_widget = QLineEdit()
-        self._input_value_widget.setPlaceholderText("输入要发送的文本...")
+        text_source_layout = QHBoxLayout()
+        text_source_layout.addWidget(w)
+        help_explanation = (
+            "固定文本（支持多行）处理机制：\n"
+            "1. 每行作为一轮输入的内容\n"
+            "2. 执行时读取第一行后自动进入下一行\n"
+            "3. 配合循环次数可实现逐行逐轮输入\n"
+            "4. 行输入完毕后自动从头重新开始\n"
+            "例：输入「A\\nB\\nC」→ 第1轮A→第2轮B→第3轮C→第4轮A..."
+        )
+        help_btn = QLabel("?")
+        help_btn.setFixedSize(22, 22)
+        help_btn.setAlignment(Qt.AlignCenter)
+        help_btn.setToolTip(help_explanation)
+        help_btn.installEventFilter(self)
+        self._help_explanation = help_explanation
+        self._help_btn = help_btn
+        help_btn.setStyleSheet(
+            "border: 1px solid #1976D2;"
+            "border-radius: 11px;"
+            "color: #1976D2;"
+            "font-weight: bold;"
+            "background: #f0f4ff;"
+            "font-size: 13px;"
+        )
+        text_source_layout.addWidget(help_btn)
+        text_source_layout.addStretch()
+        self._add_param_row("文本来源:", text_source_layout, "text_type")
+        self._param_widgets["text_type"] = w  # 确保后续逻辑仍然操作 combo 本身
+
+        self._input_value_widget = QPlainTextEdit()
+        self._input_value_widget.setPlaceholderText(
+            "输入要发送的文本，每行作为一轮输入的文本\n"
+            "执行时逐行读取，完成一行后自动进入下一行"
+        )
+        self._input_value_widget.setMinimumHeight(100)
+        self._input_value_widget.setMaximumHeight(200)
         self._add_param_row("文本内容:", self._input_value_widget, "text_value")
 
         self._input_loop_start = QSpinBox()
@@ -636,6 +687,8 @@ class StepDialog(QDialog):
             if isinstance(widget, QLineEdit):
                 # 特殊处理 QLineEdit 可能嵌套在 layout 中
                 pass
+            elif isinstance(widget, QPlainTextEdit):
+                widget.setPlainText(str(value) if value else "")
             elif isinstance(widget, QSpinBox):
                 widget.setValue(int(value))
             elif isinstance(widget, QDoubleSpinBox):
@@ -656,6 +709,8 @@ class StepDialog(QDialog):
             value = params[key]
             if isinstance(widget, QLineEdit):
                 widget.setText(str(value) if value else "")
+            elif isinstance(widget, QPlainTextEdit):
+                pass  # 已在上方处理
             elif isinstance(widget, HotkeyRecorder):
                 widget.setText(str(value) if value else "")
             elif isinstance(widget, QHBoxLayout):
@@ -672,6 +727,8 @@ class StepDialog(QDialog):
         for key, widget in self._param_widgets.items():
             if isinstance(widget, QLineEdit):
                 params[key] = widget.text()
+            elif isinstance(widget, QPlainTextEdit):
+                params[key] = widget.toPlainText()
             elif isinstance(widget, QSpinBox):
                 params[key] = widget.value()
             elif isinstance(widget, QDoubleSpinBox):

@@ -26,6 +26,9 @@ class ExecutionLogger:
         # 内存日志缓冲区（供UI实时显示）
         self.log_buffer: list[dict] = []
 
+        # 日志回调（由 executor 设置，用于转发日志到 monitor 信号）
+        self._log_callback = None
+
         # 设置文件日志
         self._logger = logging.getLogger(f"execution_{timestamp}")
         self._logger.setLevel(logging.DEBUG)
@@ -44,6 +47,10 @@ class ExecutionLogger:
         self.screenshots_dir = AppConfig.get_screenshots_dir() / f"{safe_name}_{timestamp}"
         self.screenshots_dir.mkdir(parents=True, exist_ok=True)
 
+    def set_log_callback(self, callback):
+        """设置日志回调，用于实时转发到 monitor"""
+        self._log_callback = callback
+
     def log(self, level: str, message: str, step_name: str = "", **kwargs):
         """记录一条日志"""
         entry = {
@@ -54,6 +61,13 @@ class ExecutionLogger:
             **kwargs,
         }
         self.log_buffer.append(entry)
+
+        # 回调转发到 monitor（确保 actions.py 的日志也在运行页面显示）
+        if self._log_callback:
+            try:
+                self._log_callback(entry)
+            except Exception:
+                pass
 
         # 写入文件
         full_msg = f"[{step_name}] {message}" if step_name else message

@@ -132,21 +132,29 @@ class SettingsDialog(QDialog):
             target_edit.setText(dirpath)
 
     def _load_current_settings(self):
-        settings = AppConfig._load_settings()
+        settings = AppConfig.load_settings()
         self.edit_logs_dir.setText(settings.get("logs_dir", ""))
         self.edit_ss_dir.setText(settings.get("screenshots_dir", ""))
 
     def _save_and_close(self):
         logs_dir = self.edit_logs_dir.text().strip()
         ss_dir = self.edit_ss_dir.text().strip()
-        AppConfig.save_settings(
-            {
-                "logs_dir": logs_dir,
-                "screenshots_dir": ss_dir,
-            }
-        )
-        AppConfig.reload_settings()
-        QMessageBox.information(self, "成功", "设置已保存，下次运行项目时生效。")
+
+        # 验证：如果目录不为空，检查目录是否存在
+        if logs_dir and not os.path.isdir(logs_dir):
+            QMessageBox.warning(self, "验证失败", f"日志目录不存在或无法访问:\n{logs_dir}")
+            return
+        if ss_dir and not os.path.isdir(ss_dir):
+            QMessageBox.warning(self, "验证失败", f"截图目录不存在或无法访问:\n{ss_dir}")
+            return
+
+        # 合并保存（保留已有设置，只更新变更的字段）
+        current = AppConfig.load_settings()
+        current["logs_dir"] = logs_dir
+        current["screenshots_dir"] = ss_dir
+        AppConfig.save_settings(current)
+
+        QMessageBox.information(self, "成功", "设置已保存。")
         self.accept()
 
 
@@ -228,6 +236,10 @@ class MainWindow(QMainWindow):
         self.btn_duplicate.clicked.connect(self._duplicate_project)
         btn_layout.addWidget(self.btn_duplicate)
 
+        self.btn_clear_cache = QPushButton("🧹 清除缓存")
+        self.btn_clear_cache.clicked.connect(self._clear_cache)
+        btn_layout.addWidget(self.btn_clear_cache)
+
         btn_layout.addStretch()
 
         self.btn_import = QPushButton("📥 导入")
@@ -245,6 +257,20 @@ class MainWindow(QMainWindow):
 
         # 加载数据
         self._refresh_table()
+
+    def closeEvent(self, event):
+        """关闭主窗口时：清理工具窗口并退出应用"""
+        # 停止坐标拾取器定时器
+        if hasattr(self, 'coord_picker'):
+            self.coord_picker.stop_tracking()
+            self.coord_picker.hide()
+        # 隐藏截图工具
+        if hasattr(self, 'screenshot_tool'):
+            self.screenshot_tool.hide()
+        # 退出应用
+        from PySide6.QtWidgets import QApplication
+        QApplication.quit()
+        event.accept()
 
     def _setup_style(self):
         """应用样式"""
@@ -409,6 +435,30 @@ class MainWindow(QMainWindow):
                 QMessageBox.information(self, "成功", f'项目 "{project.name}" 导入成功')
             else:
                 QMessageBox.warning(self, "失败", "导入项目失败，请检查文件格式")
+
+    def _clear_cache(self):
+        """清除日志和截图缓存"""
+        reply = QMessageBox.question(
+            self,
+            "确认清除缓存",
+            "确定要清除所有日志和截图缓存吗？\n"
+            "此操作将删除 data/logs/ 和 data/screenshots/ 目录下的所有文件。\n"
+            "项目数据和设置不会被清除。",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if reply == QMessageBox.Yes:
+            try:
+                file_count, byte_count = AppConfig.clear_cache()
+                size_mb = byte_count / (1024 * 1024)
+                self.statusBar().showMessage(f"已清除缓存：删除 {file_count} 个文件，释放 {size_mb:.1f} MB")
+                QMessageBox.information(
+                    self,
+                    "清除完成",
+                    f"共删除 {file_count} 个缓存文件，释放 {size_mb:.2f} MB 空间。",
+                )
+            except Exception as e:
+                QMessageBox.warning(self, "错误", f"清除缓存失败: {e}")
 
     def _show_context_menu(self, pos):
         """右键菜单"""

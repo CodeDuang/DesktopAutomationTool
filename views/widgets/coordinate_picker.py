@@ -27,7 +27,7 @@ class CoordinatePicker(QWidget):
         self.setWindowTitle("坐标拾取器")
         self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.Tool | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground, False)
-        self.setFixedSize(320, 100)
+        self.setFixedSize(320, 130)
 
         self._build_ui()
         self._setup_shortcuts()
@@ -58,7 +58,7 @@ class CoordinatePicker(QWidget):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 8, 10, 8)
-        layout.setSpacing(6)
+        layout.setSpacing(4)
 
         # 标题栏
         title_layout = QHBoxLayout()
@@ -99,6 +99,13 @@ class CoordinatePicker(QWidget):
 
         layout.addLayout(btn_layout)
 
+        # 快捷键提示（需要鼠标焦点在窗口上）
+        hint = QLabel("💡 快捷键(Ctrl+C/Esc)需鼠标焦点在此窗口上")
+        hint.setFont(QFont("Microsoft YaHei", 8))
+        hint.setAlignment(Qt.AlignCenter)
+        hint.setStyleSheet("color: #888; padding-top: 2px;")
+        layout.addWidget(hint)
+
     def _setup_shortcuts(self):
         """设置键盘快捷键"""
         QShortcut(QKeySequence(Qt.Key_Escape), self, self._on_escape)
@@ -106,9 +113,21 @@ class CoordinatePicker(QWidget):
 
     def _on_escape(self):
         """ESC 键：停止追踪并隐藏窗口"""
-        if self._tracking:
-            self._toggle_tracking()
+        self.stop_tracking()
         self.hide()
+
+    def hideEvent(self, event):
+        """窗口隐藏时自动停止 Timer，避免后台持续运行"""
+        self.stop_tracking()
+        super().hideEvent(event)
+
+    def stop_tracking(self):
+        """外部调用：停止追踪并隐藏"""
+        if self._tracking:
+            self._timer.stop()
+            self._tracking = False
+            self.btn_toggle.setText("▶ 开始")
+            self.btn_toggle.setStyleSheet("background: #4CAF50; color: white; border: none; border-radius: 3px; padding: 4px 12px;")
 
     def _toggle_tracking(self):
         """开始/停止追踪"""

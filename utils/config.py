@@ -83,6 +83,11 @@ class AppConfig:
         return cls._settings_cache
 
     @classmethod
+    def load_settings(cls) -> dict:
+        """公开方法：加载应用设置"""
+        return cls._load_settings()
+
+    @classmethod
     def save_settings(cls, settings: dict):
         cls._settings_cache = dict(settings)
         path = cls._settings_path()
@@ -92,6 +97,37 @@ class AppConfig:
     @classmethod
     def reload_settings(cls):
         cls._settings_cache = None
+
+    @classmethod
+    def clear_cache(cls) -> tuple[int, int]:
+        """清除所有缓存文件（日志和截图），返回 (删除文件数, 释放字节数)"""
+        import shutil
+        total_files = 0
+        total_bytes = 0
+
+        dirs_to_clean = [
+            cls.get_logs_dir(),
+            cls.get_screenshots_dir(),
+        ]
+
+        for d in dirs_to_clean:
+            if d.exists():
+                # 统计
+                for f in d.rglob("*"):
+                    if f.is_file():
+                        total_files += 1
+                        total_bytes += f.stat().st_size
+                # 删除目录内所有内容，保留空目录
+                for item in d.iterdir():
+                    try:
+                        if item.is_dir():
+                            shutil.rmtree(item, ignore_errors=True)
+                        else:
+                            item.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+
+        return total_files, total_bytes
 
     # 默认设置
     DEFAULT_SPEED_MULTIPLIER = 1.0

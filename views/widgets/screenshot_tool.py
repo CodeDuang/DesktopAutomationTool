@@ -36,7 +36,12 @@ def _pil_to_qpixmap(pil_image) -> QPixmap:
 
 
 class ScreenshotRegionSelector(QWidget):
-    """全屏截图选择器：冻结桌面为背景 + 半透明遮罩 + 拖拽选框"""
+    """全屏截图选择器：冻结桌面为背景 + 半透明遮罩 + 拖拽选框
+
+    支持多屏和系统缩放（DPI）。参考 Windows Win+Shift+S 实现：
+    - 对每个屏幕分别截取背景，避免不同 DPI 屏幕间拉伸变形
+    - 截图时使用选中屏幕的真实 DPR 做坐标转换
+    """
 
     region_selected = Signal(QRect)
 
@@ -51,16 +56,27 @@ class ScreenshotRegionSelector(QWidget):
         self.setGeometry(screen_rect)
         self.setCursor(Qt.CrossCursor)
 
-        # 截取干净的全屏作为背景
-        self._bg_pixmap = self._capture_full_screen()
+        # 为每个屏幕分别截取背景（解决多屏不同 DPI 变形问题）
+        self._screen_bg: dict = {}  # screen -> (pixmap, logical_rect)
+        self._capture_per_screen()
 
         self._start = QPoint()
         self._end = QPoint()
         self._selecting = False
         self._selected_rect = QRect()
 
+    def _capture_per_screen(self):
+        """对每个屏幕分别截取背景（grabWindow 自动处理 DPI 缩放）"""
+        for screen in QGuiApplication.screens():
+            geom = screen.geometry()
+            try:
+                pixmap = screen.grabWindow(0, 0, 0, geom.width(), geom.height())
+            except Exception:
+                continue
+            self._screen_bg[screen] = (pixmap, QRect(geom.x(), geom.y(), geom.width(), geom.height()))
+
     def _capture_full_screen(self) -> QPixmap:
-        """用 pyautogui 截取全屏并转为 QPixmap"""
+        """兼容旧接口：全屏截图"""
         try:
             img = pyautogui.screenshot()
             return _pil_to_qpixmap(img)
@@ -77,8 +93,11 @@ class ScreenshotRegionSelector(QWidget):
         painter = QPainter(self)
         rect = self.rect()
 
-        # 绘制冻结的桌面背景
-        if not self._bg_pixmap.isNull():
+        # 绘制每个屏幕的背景（各自独立缩放，避免多屏 DPI 不同导致变形）
+        if self._screen_bg:
+            for screen, (pixmap, logical_rect) in self._screen_bg.items():
+                painter.drawPixmap(logical_rect, pixmap)
+        elif not self._bg_pixmap.isNull() if hasattr(self, '_bg_pixmap') else False:
             painter.drawPixmap(rect, self._bg_pixmap, rect)
 
         # 半透明黑色遮罩
@@ -87,8 +106,18 @@ class ScreenshotRegionSelector(QWidget):
         if self._selecting or self._selected_rect.isValid():
             sel_rect = QRect(self._start, self._end).normalized() if self._selecting else self._selected_rect
 
-            if not self._bg_pixmap.isNull():
-                painter.drawPixmap(sel_rect, self._bg_pixmap, sel_rect)
+            # 在遮罩上挖出选中区域的清晰背景
+            if self._screen_bg:
+                # 按屏幕分别绘制选中区域内的背景
+                for screen, (pixmap, logical_rect) in self._screen_bg.items():
+                    intersect = logical_rect.intersected(sel_rect)
+                    if intersect.isValid():
+                        src_x = intersect.x() - logical_rect.x()
+                        src_y = intersect.y() - logical_rect.y()
+                        src_w = intersect.width()
+                        src_h = intersect.height()
+                        painter.drawPixmap(intersect, pixmap,
+                                           QRect(src_x, src_y, src_w, src_h))
             else:
                 painter.setCompositionMode(QPainter.CompositionMode_Clear)
                 painter.fillRect(sel_rect, Qt.transparent)
@@ -148,7 +177,7 @@ class ScreenshotTool(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("截图工具")
-        self.setWindowFlags(Qt.WindowStaysOnTopHint)
+        self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.Tool)
         self.setFixedSize(300, 150)
 
         self._build_ui()
@@ -209,23 +238,48 @@ class ScreenshotTool(QWidget):
         self.selector.show()
 
     def _on_region_selected(self, rect: QRect):
-        """处理选择的区域 — pyautogui 截图"""
+        """处理选择的区域 — 使用选中屏幕的真实 DPR 做坐标转换
+
+        参考 Win+Shift+S：先全屏截图再用物理像素裁剪，避免多屏不同 DPI 时坐标错位。
+        """
         try:
-            # 高 DPI：逻辑坐标 → 物理像素
-            dpr = self.devicePixelRatioF()
+            # 找到选中区域中心所在的屏幕，获取其真实 DPR
+            screen = QGuiApplication.screenAt(rect.center())
+            if screen is None:
+                screen = QGuiApplication.primaryScreen()
+            dpr = screen.devicePixelRatio()
+
+            # 逻辑坐标 → 物理像素坐标
             px = int(rect.x() * dpr)
             py = int(rect.y() * dpr)
             pw = int(rect.width() * dpr)
             ph = int(rect.height() * dpr)
 
-            img = pyautogui.screenshot(region=(px, py, pw, ph))
+            # 全屏截图后裁剪（比 region 参数更可靠，避免多屏坐标偏移）
+            full_img = pyautogui.screenshot()
+
+            # 边界保护
+            px = max(0, min(px, full_img.width - 1))
+            py = max(0, min(py, full_img.height - 1))
+            pw = min(pw, full_img.width - px)
+            ph = min(ph, full_img.height - py)
+
+            if pw <= 0 or ph <= 0:
+                raise ValueError("截图区域无效")
+
+            img = full_img.crop((px, py, px + pw, py + ph))
 
             images_dir = AppConfig.get_images_dir()
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filepath = str(images_dir / f"screenshot_{timestamp}.png")
             img.save(filepath, "PNG")
 
-            QMessageBox.information(None, "截图成功", f"截图已保存到:\n{filepath}\n\n尺寸: {rect.width()}×{rect.height()}")
+            QMessageBox.information(
+                None, "截图成功",
+                f"截图已保存到:\n{filepath}\n\n"
+                f"逻辑尺寸: {rect.width()}×{rect.height()}\n"
+                f"物理像素: {img.width}×{img.height}",
+            )
         except Exception as e:
             QMessageBox.warning(None, "截图失败", f"截图失败: {e}")
         finally:

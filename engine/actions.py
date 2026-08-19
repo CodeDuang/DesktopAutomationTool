@@ -69,15 +69,23 @@ def execute_keyboard_shortcut(params: dict, logger: ExecutionLogger, step_name: 
 
         # 先执行键盘组合键（如果有）
         if keyboard_keys:
-            logger.info(f"按下快捷键: {'+'.join(keyboard_keys)}", step_name)
+            logger.info(f"⌨ 按下快捷键: {'+'.join(keyboard_keys)}", step_name)
             pyautogui.hotkey(*keyboard_keys, interval=interval)
 
         # 再执行鼠标滚轮（如果有）
         if wheel_direction:
             scroll_amount = 3 if wheel_direction == "up" else -3
-            logger.info(f"鼠标滚轮: wheel_{wheel_direction}", step_name)
+            logger.info(f"🖱 鼠标滚轮: wheel_{wheel_direction}", step_name)
             pyautogui.scroll(scroll_amount)
 
+        # 日志增加明细
+        parts_detail = []
+        if keyboard_keys:
+            parts_detail.append(f"按键: {'+'.join(keyboard_keys)}")
+        if wheel_direction:
+            parts_detail.append(f"滚轮: {wheel_direction}")
+        detail = " | ".join(parts_detail)
+        logger.info(f"✓ 快捷键执行完成: {detail}", step_name)
         return ActionResult(True, f"快捷键 {keys_str} 执行成功")
     except Exception as e:
         logger.error(f"快捷键执行失败: {e}", step_name)
@@ -98,14 +106,15 @@ def execute_image_click(params: dict, logger: ExecutionLogger, step_name: str) -
     if not image_path:
         return ActionResult(False, "图像路径为空")
 
-    logger.info(f"正在查找图像: {image_path} (置信度: {confidence})", step_name)
+    logger.info(f"🖼 正在查找图像: {image_path} (置信度: {confidence})", step_name)
 
     location = image_finder.find_image_on_screen(image_path, confidence, grayscale)
 
     if location is None:
         return ActionResult(False, f"未找到匹配图像: {image_path}")
 
-    logger.info(f"找到图像，位置: {location}", step_name)
+    logger.info(f"✅ 找到图像: {image_path} → 位置: {location}", step_name)
+    logger.info(f"📍 点击图像中心: ({location[0] + location[2]//2}, {location[1] + location[3]//2}), 点击类型: {click_type}", step_name)
     success = image_finder.click_location(
         location[0],
         location[1],
@@ -115,7 +124,7 @@ def execute_image_click(params: dict, logger: ExecutionLogger, step_name: str) -
     )
 
     if success:
-        logger.info(f"点击成功 ({click_type})", step_name)
+        logger.info(f"✅ 图像点击成功 ({click_type})", step_name)
         return ActionResult(True, f"图像匹配点击成功: {image_path}")
     else:
         return ActionResult(False, "点击操作失败")
@@ -194,21 +203,24 @@ def execute_image_relative_click(params: dict, logger: ExecutionLogger, step_nam
 
 def execute_input_text(params: dict, logger: ExecutionLogger, step_name: str, loop_index: int = 1) -> ActionResult:
     """
-    输入文本
+    输入文本（支持多行固定文本逐行输入）
 
     params: {
         "text_type": "fixed" | "loop_index" | "clipboard",
-        "text_value": "固定文本内容",
+        "text_value": "固定文本内容（多行用\\n分隔）",
         "loop_index_start": 1,
         "loop_index_step": 1,
     }
+
+    多行模式说明：text_value 包含多行时，每次执行只输入第一行，
+    然后从 text_value 中删除已输入的行。（支持按循环轮数逐行输入）
     """
     text_type = params.get("text_type", "fixed")
 
     if text_type == "clipboard":
         try:
             text = pyperclip.paste()
-            logger.info(f"从剪贴板获取内容: {text[:50]}...", step_name)
+            logger.info(f"📋 从剪贴板获取内容: '{text[:80]}'", step_name)
             if not text:
                 return ActionResult(False, "剪贴板为空")
         except Exception as e:
@@ -218,17 +230,49 @@ def execute_input_text(params: dict, logger: ExecutionLogger, step_name: str, lo
         start = int(params.get("loop_index_start", 1))
         step = int(params.get("loop_index_step", 1))
         text = str(start + (loop_index - 1) * step)
-        logger.info(f"循环索引值: {text} (第{loop_index}轮)", step_name)
+        logger.info(f"🔢 输入循环索引值: {text} (第{loop_index}轮)", step_name)
 
-    else:  # fixed
-        text = params.get("text_value", "")
-        if not text:
+    else:  # fixed — 支持多行逐行
+        raw_text = params.get("text_value", "")
+
+        # 保存原始完整文本（用于恢复跨循环状态）
+        if "_saved_text_value" not in params:
+            params["_saved_text_value"] = raw_text
+        original_text = params["_saved_text_value"]
+
+        if not original_text:
             return ActionResult(False, "文本内容为空")
-        logger.info(f"输入固定文本: {text[:50]}...", step_name)
+
+        # 读取当前行索引，从 0 开始
+        line_index = params.get("_text_line_index", 0)
+        lines = original_text.split('\n')
+
+        if line_index >= len(lines):
+            # 所有行已输入完毕，重置
+            line_index = 0
+            params["_text_line_index"] = 0
+
+        text = lines[line_index].strip()
+
+        if not text:
+            # 跳过空行，继续下一行
+            params["_text_line_index"] = line_index + 1
+            return ActionResult(False, f"第 {line_index + 1} 行为空，跳过")
+
+        # 更新行索引到下一行
+        params["_text_line_index"] = line_index + 1
+
+        remaining_lines = len(lines) - (line_index + 1)
+        if remaining_lines > 0:
+            logger.info(f"📝 输入文本: '{text}'（第 {line_index + 1}/{len(lines)} 行，剩余 {remaining_lines} 行）", step_name)
+        else:
+            logger.info(f"📝 输入文本: '{text}'（第 {line_index + 1}/{len(lines)} 行，最后一行）", step_name)
 
     try:
-        pyautogui.write(str(text), interval=0.05)
-        return ActionResult(True, f"文本输入成功: {str(text)[:50]}")
+        # pyautogui.write() 不支持中文，使用剪贴板 + Ctrl+V 方式
+        pyperclip.copy(str(text))
+        pyautogui.hotkey('ctrl', 'v')
+        return ActionResult(True, f"文本输入成功: '{text}'")
     except Exception as e:
         return ActionResult(False, f"文本输入失败: {e}")
 

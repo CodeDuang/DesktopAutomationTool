@@ -353,7 +353,8 @@ execute_verify_image_match(vconfig, logger, step_name)
 ### 7.10 engine/image_finder.py — 图像匹配 + OCR
 
 ```python
-find_image_on_screen(path, confidence, grayscale) -> (left, top, w, h) | None
+find_image_on_screen(path, confidence, grayscale, region) -> (left, top, w, h) | None
+find_all_images_on_screen(path, confidence, grayscale, region) -> [匹配结果列表]
 wait_for_image(path, confidence, timeout, interval) -> location | None
 find_text_on_screen(text, lang, confidence) -> [匹配结果列表]
 click_location(left, top, w, h, offset_x, offset_y, click_type) -> bool

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import time
-import signal as signal_module
 
 from PySide6.QtCore import QThread, Signal, QMutex, QMutexLocker, QWaitCondition
 
@@ -60,6 +59,9 @@ class ExecutorThread(QThread):
         项目级循环：如果 settings.loop_count > 1，则整体重复执行步骤1→N。
         """
         self.logger = ExecutionLogger(self.project.name)
+        # 将日志回调绑定到日志转发，使 actions.py 中的 logger.info/error 等
+        # 也能实时转发到运行页面的日志显示（通过 emit_log_signal 避免循环）
+        self.logger.set_log_callback(self._log_forward_to_signal)
         settings = self.project.settings
 
         # 设置 pyautogui 参数
@@ -283,15 +285,11 @@ class ExecutorThread(QThread):
             time.sleep(min(interval, seconds - elapsed))
             elapsed += interval
 
+    def _log_forward_to_signal(self, entry: dict):
+        """日志回调：仅转发到 monitor 信号（不做文件写入，避免循环）"""
+        self.log_signal.emit(entry)
+
     def _emit_log(self, level: str, message: str, step_name: str = ""):
-        """发送日志信号"""
+        """写文件日志（logger.log 会通过回调自动发 monitor 信号，所以这里不再重复 emit）"""
         if self.logger:
             self.logger.log(level, message, step_name)
-        self.log_signal.emit(
-            {
-                "timestamp": time.strftime("%H:%M:%S"),
-                "level": level,
-                "message": message,
-                "step_name": step_name,
-            }
-        )

@@ -1,29 +1,28 @@
-# DesktopAutomationTool
+﻿# DesktopAutomationTool
 
-这是开源的桌面自动化软件，允许进行图像匹配、快捷键、遍历输入文本等步骤，支持循环执行和步骤验证
+这是开源的桌面自动化软件，允许进行图像匹配、快捷键、遍历输入文本等步骤，支持循环执行和步骤验证（稍后会发布打包后的exe工具，可以直接下载使用而不需要克隆该项目代码）
 
-
-> **版本**: 1.2.0  
-> **更新日期**: 2026-07-23  
+> **版本**: 2.1.0  
+> **更新日期**: 2026-08-19  
 > **适用平台**: Windows 10/11 (部分功能支持 macOS/Linux)
 
 ---
 
 ## 目录
 
-1. [概述](#1-%E6%A6%82%E8%BF%B0)
-2. [安装与环境配置](#2-%E5%AE%89%E8%A3%85%E4%B8%8E%E7%8E%AF%E5%A2%83%E9%85%8D%E7%BD%AE)
-3. [快速入门](#3-%E5%BF%AB%E9%80%9F%E5%85%A5%E9%97%A8)
-4. [主页面功能](#4-%E4%B8%BB%E9%A1%B5%E9%9D%A2%E5%8A%9F%E8%83%BD)
-5. [项目编辑器](#5-%E9%A1%B9%E7%9B%AE%E7%BC%96%E8%BE%91%E5%99%A8)
-6. [步骤类型详解](#6-%E6%AD%A5%E9%AA%A4%E7%B1%BB%E5%9E%8B%E8%AF%A6%E8%A7%A3)
-7. [循环机制（步骤级 + 项目级）](#7-%E5%BE%AA%E7%8E%AF%E6%9C%BA%E5%88%B6%E6%AD%A5%E9%AA%A4%E7%BA%A7--%E9%A1%B9%E7%9B%AE%E7%BA%A7)
-8. [工具集](#8-%E5%B7%A5%E5%85%B7%E9%9B%86)
-9. [运行与监控](#9-%E8%BF%90%E8%A1%8C%E4%B8%8E%E7%9B%91%E6%8E%A7)
-10. [打包分发](#10-%E6%89%93%E5%8C%85%E5%88%86%E5%8F%91)
-11. [数据模型与扩展](#11-%E6%95%B0%E6%8D%AE%E6%A8%A1%E5%9E%8B%E4%B8%8E%E6%89%A9%E5%B1%95)
-12. [代码质量评估](#12-%E4%BB%A3%E7%A0%81%E8%B4%A8%E9%87%8F%E8%AF%84%E4%BC%B0)
-13. [常见问题](#13-%E5%B8%B8%E8%A7%81%E9%97%AE%E9%A2%98)
+1. [概述](#1-概述)
+2. [安装与环境配置](#2-安装与环境配置)
+3. [快速入门](#3-快速入门)
+4. [主页面功能](#4-主页面功能)
+5. [项目编辑器](#5-项目编辑器)
+6. [步骤类型详解](#6-步骤类型详解)
+7. [循环机制（步骤级 + 项目级）](#7-循环机制步骤级--项目级)
+8. [工具集](#8-工具集)
+9. [运行与监控](#9-运行与监控)
+10. [打包分发](#10-打包分发)
+11. [数据模型与扩展](#11-数据模型与扩展)
+12. [代码质量评估](#12-代码质量评估)
+13. [常见问题](#13-常见问题)
 
 ---
 
@@ -74,7 +73,7 @@ automation/
 │   └── hotkey.py        # 全局热键
 └── docs/
     ├── USER_GUIDE.md    # 本文件
-    └── CODE_EVALUATION.md # 代码质量评估报告
+    └── DEVELOPER_GUIDE.md # 开发者文档
 ```
 
 ---
@@ -114,7 +113,7 @@ pip install -r requirements.txt
 
 OCR 文字识别功能需要单独安装 Tesseract-OCR 引擎：
 
-1. 下载安装程序：[Home · UB-Mannheim/tesseract Wiki · GitHub](https://github.com/UB-Mannheim/tesseract/wiki)
+1. 下载安装程序：https://github.com/UB-Mannheim/tesseract/wiki
 2. 安装时勾选中文语言包（Chinese Simplified）
 3. 将 Tesseract 安装目录添加到系统 PATH
 4. 或者修改代码中指定路径：
@@ -288,11 +287,11 @@ pyinstaller build.spec --clean --log-level=WARN
 
 ### 5.6 运行控制
 
-| 按钮     | 功能            |
-| ------ | ------------- |
-| ▶ 运行   | 从头开始执行所有启用的步骤 |
-| ▶\     | 从当前步骤运行       |
-| ⏭ 单步执行 | 仅执行选中步骤（调试用）  |
+| 按钮          | 功能            |
+| ----------- | ------------- |
+| ▶ 运行        | 从头开始执行所有启用的步骤 |
+| ▶\| 从当前步骤运行 | 从选中步骤开始执行     |
+| ⏭ 单步执行      | 仅执行选中步骤（调试用）  |
 
 ---
 
@@ -589,7 +588,18 @@ pyinstaller build.spec
         "retry_count": 0,
         "retry_interval_ms": 1000
       },
-      "enabled": true
+      "enabled": true,
+      "verify_config": {
+        "enabled": false,
+        "verify_type": "image_match",
+        "verify_mode": "timed",
+        "timeout_ms": 5000,
+        "check_interval_ms": 500,
+        "params": {
+          "image_path": "",
+          "confidence": 0.90
+        }
+      }
     }
   ],
   "created_at": "2026-07-09T12:00:00",
@@ -599,7 +609,8 @@ pyinstaller build.spec
     "stop_on_failure": true,
     "screenshot_on_failure": true,
     "emergency_stop_key": "esc",
-    "loop_count": 1
+    "loop_count": 1,
+    "manual_loop_confirm": false
   }
 }
 ```
@@ -619,9 +630,7 @@ pyinstaller build.spec
 
 ## 12. 代码质量评估
 
-详见 `docs/CODE_EVALUATION.md`。
-
-整体评价：项目架构清晰，三层分离（models/views/engine），扩展模式明确。代码质量良好，适合继续迭代开发。
+整体评价：项目架构清晰，三层分离（models/views/engine），扩展模式明确。代码质量良好，适合继续迭代开发。开发者可参考 `docs/DEVELOPER_GUIDE.md` 了解代码架构和扩展方式。
 
 ---
 

@@ -1,7 +1,9 @@
-﻿# 桌面自动化工具 - 用户手册
+﻿# DesktopAutomationTool
 
-> **版本**: 1.2.0  
-> **更新日期**: 2026-07-23  
+这是开源的桌面自动化软件，允许进行图像匹配、快捷键、遍历输入文本等步骤，支持循环执行和步骤验证（稍后会发布打包后的exe工具，可以直接下载使用而不需要克隆该项目代码）
+
+> **版本**: 2.1.0  
+> **更新日期**: 2026-08-19  
 > **适用平台**: Windows 10/11 (部分功能支持 macOS/Linux)
 
 ---
@@ -71,7 +73,7 @@ automation/
 │   └── hotkey.py        # 全局热键
 └── docs/
     ├── USER_GUIDE.md    # 本文件
-    └── CODE_EVALUATION.md # 代码质量评估报告
+    └── DEVELOPER_GUIDE.md # 开发者文档
 ```
 
 ---
@@ -586,7 +588,18 @@ pyinstaller build.spec
         "retry_count": 0,
         "retry_interval_ms": 1000
       },
-      "enabled": true
+      "enabled": true,
+      "verify_config": {
+        "enabled": false,
+        "verify_type": "image_match",
+        "verify_mode": "timed",
+        "timeout_ms": 5000,
+        "check_interval_ms": 500,
+        "params": {
+          "image_path": "",
+          "confidence": 0.90
+        }
+      }
     }
   ],
   "created_at": "2026-07-09T12:00:00",
@@ -596,7 +609,8 @@ pyinstaller build.spec
     "stop_on_failure": true,
     "screenshot_on_failure": true,
     "emergency_stop_key": "esc",
-    "loop_count": 1
+    "loop_count": 1,
+    "manual_loop_confirm": false
   }
 }
 ```
@@ -616,9 +630,7 @@ pyinstaller build.spec
 
 ## 12. 代码质量评估
 
-详见 `docs/CODE_EVALUATION.md`。
-
-整体评价：项目架构清晰，三层分离（models/views/engine），扩展模式明确。代码质量良好，适合继续迭代开发。
+整体评价：项目架构清晰，三层分离（models/views/engine），扩展模式明确。代码质量良好，适合继续迭代开发。开发者可参考 `docs/DEVELOPER_GUIDE.md` 了解代码架构和扩展方式。
 
 ---
 
